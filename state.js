@@ -150,11 +150,17 @@ class PixelEditor {
     let { tools, controls, dispatch } = config;
     this.state = state;
 
+    //The pointer handler given to PictureCanvas calls the currently
+    //selected tool with the appropriate arguments and, if that returns
+    //a move handler, adapts it to also receive the state.
     this.canvas = new PictureCanvas(state.picture, (pos) => {
       let tool = tools[this.state.tool];
       let onMove = tool[(pos, this.state, dispatch)];
       if (onMove) return (pos) => onMove(pos, this.state);
     });
+
+    //All controls are constructed and stored in this.controls so that they can be
+    //updated when the application state changes
     this.controls = controls.map((Control = new Control(this.state, config)));
     this.dom = elt(
       "div",
@@ -163,6 +169,7 @@ class PixelEditor {
       elt("br"),
       ...this.controls.reduce((a, c) => a.concat(" ", c.dom), [])
     );
+    //note: use reduce to introduce spaces between the controls’ DOM elements
   }
   synState(state) {
     this.state = state;
@@ -170,5 +177,47 @@ class PixelEditor {
     for (let ctrl of this.controls) {
       ctrl.synState(state);
     }
+  }
+}
+
+//It creates a <select> element with an option for each tool and
+//sets up a "change" event handler that updates the application state
+//when the user selects a different tool
+class ToolSelect {
+  constructor(state, { tools, dispatch }) {
+    this.select = elt(
+      "select",
+      {
+        onchange: () => dispatch({ tool: this.select.value }),
+      },
+      Object.keys(tools).map((name) =>
+        elt("option", { selected: name == state.tool }, name)
+      )
+    );
+    this.dom = elt("label", null, "🖌 Tool: ", this.select);
+  }
+  synState(state) {
+    this.select.value = state.tool;
+  }
+}
+
+//Note:By wrapping the label text and the field in a <label> element,
+//we tell the browser that the label belongs to that field so that you can,
+//for example, click the label to focus the field.
+
+class ColorSelect {
+  constructor(state, { dispatch }) {
+    this.input = elt("input", {
+      type: "color",
+      value: state.color,
+      onchange: () =>
+        dispatch({
+          color: this.input.value,
+        }),
+    });
+    this.dom = elt("label", null, "🎨 Color: ", this.input);
+  }
+  synState(state) {
+    this.input.value = state.color;
   }
 }
