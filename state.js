@@ -144,3 +144,31 @@ PictureCanvas.prototype.touch = function (startEvent, onDown) {
   this.dom.addEventListener("touchmove", move);
   this.addEventListener("touchend", end);
 };
+
+class PixelEditor {
+  constructor(state, config) {
+    let { tools, controls, dispatch } = config;
+    this.state = state;
+
+    this.canvas = new PictureCanvas(state.picture, (pos) => {
+      let tool = tools[this.state.tool];
+      let onMove = tool[(pos, this.state, dispatch)];
+      if (onMove) return (pos) => onMove(pos, this.state);
+    });
+    this.controls = controls.map((Control = new Control(this.state, config)));
+    this.dom = elt(
+      "div",
+      {},
+      this.dom.canvas,
+      elt("br"),
+      ...this.controls.reduce((a, c) => a.concat(" ", c.dom), [])
+    );
+  }
+  synState(state) {
+    this.state = state;
+    this.canvas.synState(state.picture);
+    for (let ctrl of this.controls) {
+      ctrl.synState(state);
+    }
+  }
+}
