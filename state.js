@@ -1,4 +1,4 @@
-class Picture {
+var Picture = class Picture {
   constructor(width, height, pixels) {
     this.width = width;
     this.height = height;
@@ -32,7 +32,7 @@ class Picture {
     }
     return new Picture(this.width, this.height, copy);
   }
-}
+};
 
 //allow the interface to dispatch actions as objects whose properties
 //overwrite the properties of the previous state.The color field,
@@ -46,17 +46,29 @@ function updateState(state, action) {
 //Create an elt function to set properties whose value isn’t a string,
 //such as onclick, which can be set to a function to register
 //a click event handler.
+// function elt(type, props, ...children) {
+//   let dom = document.createElement(type);
+//   if (props) Object.assign(dom, props);
+//   for (let child of children) {
+//     if (typeof child != "string") dom.appendChild(child);
+//     else {
+//       dom.appendChild(document.createTextNode(child));
+//     }
+//   }
+//   return dom;
+// }
+
+////
 function elt(type, props, ...children) {
   let dom = document.createElement(type);
   if (props) Object.assign(dom, props);
   for (let child of children) {
     if (typeof child != "string") dom.appendChild(child);
-    else {
-      dom.appendChild(document.createTextNode(child));
-    }
+    else dom.appendChild(document.createTextNode(child));
   }
   return dom;
 }
+////
 //ex:
 // document.body.appendChild(elt("button", {
 //      onclick: () => console.log("click")
@@ -65,8 +77,8 @@ function elt(type, props, ...children) {
 //create a canvas picture
 //We draw each pixel as a 10-by-10 square, as determined by
 //the scale constant
-const scale = 10;
-class PictureCanvas {
+var scale = 10;
+var PictureCanvas = class PictureCanvas {
   constructor(picture, pointerDown) {
     this.dom = elt("canvas", {
       onmousedown: (event) => this.mouse(event, pointerDown),
@@ -80,7 +92,7 @@ class PictureCanvas {
     this.picture = picture;
     DrawPicture(this.picture, this.dom, scale);
   }
-}
+};
 
 //drawing function sets the size of the canvas based
 //on the scale and picture size and fills it with a series of squares,
@@ -145,7 +157,7 @@ PictureCanvas.prototype.touch = function (startEvent, onDown) {
   this.addEventListener("touchend", end);
 };
 
-class PixelEditor {
+var PixelEditor = class PixelEditor {
   constructor(state, config) {
     let { tools, controls, dispatch } = config;
     this.state = state;
@@ -161,7 +173,8 @@ class PixelEditor {
 
     //All controls are constructed and stored in this.controls so that they can be
     //updated when the application state changes
-    this.controls = controls.map((Control = new Control(this.state, config)));
+
+    this.controls = controls.map((Control) => new Control(state, config));
     this.dom = elt(
       "div",
       {},
@@ -178,12 +191,12 @@ class PixelEditor {
       ctrl.synState(state);
     }
   }
-}
+};
 
 //It creates a <select> element with an option for each tool and
 //sets up a "change" event handler that updates the application state
 //when the user selects a different tool
-class ToolSelect {
+var ToolSelect = class ToolSelect {
   constructor(state, { tools, dispatch }) {
     this.select = elt(
       "select",
@@ -199,13 +212,13 @@ class ToolSelect {
   synState(state) {
     this.select.value = state.tool;
   }
-}
+};
 
 //Note:By wrapping the label text and the field in a <label> element,
 //we tell the browser that the label belongs to that field so that you can,
 //for example, click the label to focus the field.
 
-class ColorSelect {
+var ColorSelect = class ColorSelect {
   constructor(state, { dispatch }) {
     this.input = elt("input", {
       type: "color",
@@ -220,7 +233,7 @@ class ColorSelect {
   synState(state) {
     this.input.value = state.color;
   }
-}
+};
 
 //Create a function  that immediately calls the drawPixel function but
 //then returns it so that it is called again for newly touched pixels
@@ -251,4 +264,186 @@ function rectangles(start, state, dispatch) {
   }
   drawrectangle(start);
   return drawrectangle;
+}
+
+const around = [
+  { dx: -1, dy: 0 },
+  { dx: 1, dy: 0 },
+  { dx: 0, dy: -1 },
+  { dx: 0, dy: 1 },
+];
+
+//this code searches through a grid to find all “connected” pixels
+function fill({ x, y }, state, dispatch) {
+  let targetColor = state.picture.pixel(x, y);
+  let drawn = [{ x, y, color: state.color }];
+  for (let done = 0; done < drawn.length; done++) {
+    for (let { dx, dy } of around) {
+      let x = drawn[done].x + dx;
+      let y = drawn[done].y + dy;
+      if (
+        x > 0 &&
+        x < state.picture.width &&
+        y > 0 &&
+        y < state.picture.height &&
+        state.picture.pixel(x, y) == targetColor &&
+        !drawn.some((p) => p.x == x && p.y == y)
+      ) {
+        drawn.push({ x, y, color: state.color });
+      }
+    }
+  }
+  dispatch({ picture: state.picture.draw(drawn) });
+}
+
+//Note:For each pixel reached, we have to see whether any adjacent
+//pixels have the same color and haven’t already been painted over
+
+//a color picker, which allows you to point at a color in the picture to
+//use it as the current drawing color
+function pick(pos, state, dispatch) {
+  dispatch({ color: state.picture.pixel(pos.x, pos.y) });
+}
+
+let state = {
+  tool: "draw",
+  color: "000000",
+  picture: Picture.empty(60, 30, "#f0f0f0"),
+};
+
+let app = new PixelEditor(state, {
+  tools: [draw, fill, rectangles, pick],
+  controls: [ToolSelect, ColorSelect],
+  dispatch(action) {
+    state = updateSate(state, action);
+    app.syncState(state);
+  },
+});
+document.querySelector("div").appendChild(app.dom);
+
+//create a button for downlaoding
+
+/**
+ *
+ * @param {*} state
+ * The component keeps track of the current picture so that
+ * it can access it when saving. To create the image file,
+ * it uses a <canvas> element that it draws the picture on
+ * (at a scale of one pixel per pixel).
+ */
+
+var SaveButton = class SaveButton {
+  constructor(state) {
+    this.picture = state.picture;
+    this.dom = elt(
+      "button",
+      {
+        onclick: () => this.save(),
+      },
+      "💾 Save"
+    );
+  }
+  // create a link element that points at this URL and has a download attribute
+  //to get browser to download pic.We add that link to the document,
+  //simulate a click on it, and remove it again.
+  save() {
+    let canvas = elt("canvas", DrawPicture(this.picture, canvas, 1));
+    let link = elt("a", {
+      href: this.canvas.toDataURL(),
+      download: "pixelart.png",
+    });
+    document.body.appendChild(link);
+    link.click();
+    this.remove();
+  }
+  synState(state) {
+    this.picture = state.picture;
+  }
+};
+
+//Note:toDataURL method on a canvas element creates a URL that starts with data
+//containing the whole data in the URL
+
+var LoadButton = class LoadButton {
+  constructor(_, { dispatch }) {
+    this.dom = elt(
+      "button",
+      {
+        onclick: () => this.startLoad(dispatch),
+      },
+      "📁 Load"
+    );
+  }
+};
+function startLoad(dispatch) {
+  let input = elt("input", {
+    type: "file",
+    onchange: () => finishLoad(input.files[0], dispatch),
+  });
+  document.body.appendChild(input);
+  input.onclick();
+  input.remove();
+}
+
+function finishLoad(file, dispatch) {
+  if (file == null) return;
+  let reader = new FileReader();
+  reader.addEventListener("load", () => {
+    let img = elt("img", {
+      onload: () =>
+        dispatch({
+          picture: pictureFromImage(img),
+        }),
+      src: reader.result,
+    });
+  });
+  reader.readAsDataURL(file);
+}
+
+//To get access to the pixels, we first draw the picture to a
+//<canvas> element. The canvas context has a getImageData method that
+//allows a script to read its pixels.So, once the picture is on the canvas,
+//we can access it and construct a Picture object
+function pictureFromImage(image) {
+  let width = Math.min(100, image.width);
+  let height = Math.min(100, image.height);
+  let canvas = elt("canvas", { width, height });
+  let cx = canvas.getContext("2d");
+  cx.drawImage(canvas, 0, 0);
+  let pixels = [];
+  let { data } = cx.getImageData(0, 0, width, height);
+
+  // the hex helper function calls padStart to add a leading zero when necessary
+  //n.toString(16) will produce a string representation in base 16
+  function hex(n) {
+    return n.toString(16).padStart(2, "0");
+  }
+
+  for (let i = 0; i < data.length; i += 4) {
+    let [r, g, b] = data.slice(i, i + 3);
+    pixels.push("#" + hex(r) + hex(g) + hex(b));
+  }
+
+  return new Picture(width, height, pixels);
+}
+
+function historyUpdateState(state, action) {
+  if (action.undo == true) {
+    if (state.done.length == 0) return state;
+    return Object.assign(
+      {},
+      {
+        picture: state.done[0],
+        done: state.slice(1),
+        doneAt: 0,
+      }
+    );
+  } else if (action.picture && state.doneAt < Date.now() - 1000) {
+    return Object.assign({}, state.action, {
+      done: [state.picture, ...state.done],
+      doneAt: Date.now(),
+    });
+  } else {
+    return Object.assign({}, state, action);
+  }
 }
