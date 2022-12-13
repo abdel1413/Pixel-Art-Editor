@@ -14,12 +14,13 @@ var Picture = class Picture {
    *  create an array  constructor in which all pixels have
    * the same color using fill method
    */
+
   static empty(width, height, color) {
     let pixels = new Array(width * height).fill(color);
     console.log(pixels);
-    return new Picture(width, height, color);
+    return new Picture(width, height, pixels);
   }
-  //
+
   pixel(x, y) {
     return this.pixels[x + y * this.width];
   }
@@ -39,36 +40,27 @@ var Picture = class Picture {
 //when the user changes it, could dispatch an object like
 // { color: field.value }, from which this update function can
 //compute a new state.
-function updateState(state, action) {
-  return Object.assign({}, state, action);
-}
+
+// function updateState(state, action) {
+//   return Object.assign({}, state, action);
+// }
 
 //Create an elt function to set properties whose value isn’t a string,
 //such as onclick, which can be set to a function to register
 //a click event handler.
-// function elt(type, props, ...children) {
-//   let dom = document.createElement(type);
-//   if (props) Object.assign(dom, props);
-//   for (let child of children) {
-//     if (typeof child != "string") dom.appendChild(child);
-//     else {
-//       dom.appendChild(document.createTextNode(child));
-//     }
-//   }
-//   return dom;
-// }
 
-////
 function elt(type, props, ...children) {
   let dom = document.createElement(type);
   if (props) Object.assign(dom, props);
   for (let child of children) {
     if (typeof child != "string") dom.appendChild(child);
-    else dom.appendChild(document.createTextNode(child));
+    else {
+      dom.appendChild(document.createTextNode(child));
+    }
   }
   return dom;
 }
-////
+
 //ex:
 // document.body.appendChild(elt("button", {
 //      onclick: () => console.log("click")
@@ -77,6 +69,7 @@ function elt(type, props, ...children) {
 //create a canvas picture
 //We draw each pixel as a 10-by-10 square, as determined by
 //the scale constant
+
 var scale = 10;
 var PictureCanvas = class PictureCanvas {
   constructor(picture, pointerDown) {
@@ -84,20 +77,26 @@ var PictureCanvas = class PictureCanvas {
       onmousedown: (event) => this.mouse(event, pointerDown),
       ontouchstart: (event) => this.touch(event, pointerDown),
     });
-    this.synState(picture);
+    this.syncState(picture);
   }
 
-  synState(picture) {
+  syncState(picture) {
     if (this.picture == picture) return;
     this.picture = picture;
-    DrawPicture(this.picture, this.dom, scale);
+    drawPicture(this.picture, this.dom, scale);
   }
 };
 
+PictureCanvas.prototype.syncState = function (picture) {
+  if (this.picture == picture) return;
+  this.picture = picture;
+  drawPicture(picture, this.dom, scale, this.picture);
+};
 //drawing function sets the size of the canvas based
 //on the scale and picture size and fills it with a series of squares,
 //one for each pixel.
-function DrawPicture(picture, canvas, scale) {
+
+function drawPicture(picture, canvas, scale) {
   canvas.width = picture.width * scale;
   canvas.height = picture.height * scale;
   let cx = canvas.getContext("2d");
@@ -110,16 +109,39 @@ function DrawPicture(picture, canvas, scale) {
   }
 }
 
+//Hw
+// function drawPicture(picture, canvas, scale, previous) {
+//   if (
+//     previous == null ||
+//     previous.width != picture.width ||
+//     previous.height != picture.height
+//   ) {
+//     canvas.width = picture.width * scale;
+//     canvas.height = picture.height * scale;
+//     previous = null;
+//   }
+//   let cx = canvas.getContext("2d");
+//   for (let y = 0; y < picture.height; y++) {
+//     for (let x = 0; x < picture.width; x++) {
+//       let color = picture.pixel(x, y);
+//       if (previous == null || previous.pixel(x, y) != color) {
+//         cx.fillStyle = color;
+//         cx.fillRect(x * scale, y * scale, scale, scale);
+//       }
+//     }
+//   }
+// }
+
 PictureCanvas.prototype.mouse = function (downEvent, onDown) {
   if (downEvent.button != 0) return;
-  let pos = PointerPosition(downEvent, this.dom);
+  let pos = pointerPosition(downEvent, this.dom);
   let onMove = onDown(pos);
   if (!onMove) return;
   let move = (moveEvent) => {
     if (moveEvent.buttons == 0) {
       this.dom.removeEventListener("mousemove", move);
     } else {
-      let newPos = PointerPosition("moveEvent", this.dom);
+      let newPos = pointerPosition(moveEvent, this.dom);
       if (newPos.x == pos.x && newPos.y == pos.y) return;
       pos = newPos;
       onMove(newPos);
@@ -128,7 +150,7 @@ PictureCanvas.prototype.mouse = function (downEvent, onDown) {
   this.dom.addEventListener("mousemove", move);
 };
 
-function PointerPosition(pos, domNode) {
+function pointerPosition(pos, domNode) {
   let rect = domNode.getBoundingClientRect();
   return {
     x: Math.floor((pos.clientX - rect.left) / scale),
@@ -137,12 +159,12 @@ function PointerPosition(pos, domNode) {
 }
 
 PictureCanvas.prototype.touch = function (startEvent, onDown) {
-  let pos = PointerPosition(startEvent.touches[0], this.dom);
+  let pos = pointerPosition(startEvent.touches[0], this.dom);
   let onMove = onDown(pos);
   startEvent.preventDefault();
   if (!onMove) return;
   let move = (moveEvent) => {
-    let newPos = PointerPosition(moveEvent.touches[0], this.dom);
+    let newPos = pointerPosition(moveEvent.touches[0], this.dom);
     if (newPos.x === pos.x && newPos.y == pos.y) return;
     pos = newPos;
     onMove(newPos);
@@ -154,7 +176,7 @@ PictureCanvas.prototype.touch = function (startEvent, onDown) {
   };
 
   this.dom.addEventListener("touchmove", move);
-  this.addEventListener("touchend", end);
+  this.dom.addEventListener("touchend", end);
 };
 
 var PixelEditor = class PixelEditor {
@@ -167,7 +189,7 @@ var PixelEditor = class PixelEditor {
     //a move handler, adapts it to also receive the state.
     this.canvas = new PictureCanvas(state.picture, (pos) => {
       let tool = tools[this.state.tool];
-      let onMove = tool[(pos, this.state, dispatch)];
+      let onMove = tool(pos, this.state, dispatch);
       if (onMove) return (pos) => onMove(pos, this.state);
     });
 
@@ -177,18 +199,33 @@ var PixelEditor = class PixelEditor {
     this.controls = controls.map((Control) => new Control(state, config));
     this.dom = elt(
       "div",
-      {},
-      this.dom.canvas,
+      { tabIndex: 0, onkeydown: (event) => this.keyDown(event, config) },
+      this.canvas.dom,
       elt("br"),
       ...this.controls.reduce((a, c) => a.concat(" ", c.dom), [])
     );
     //note: use reduce to introduce spaces between the controls’ DOM elements
   }
-  synState(state) {
+
+  keyDown(event, config) {
+    if (event.key == "z" && (event.ctrlkey || event.metakey)) {
+      event.preventDefault();
+      config.dispatch({ undo: true });
+    } else if (!event.ctrlkey && !event.metakey && !event.altkey) {
+      for (let tool of Object.keys(config.tools)) {
+        if (tool[0] == event.key) {
+          event.preventDefault();
+          config.dispatch({ tool });
+          return;
+        }
+      }
+    }
+  }
+  syncState(state) {
     this.state = state;
-    this.canvas.synState(state.picture);
+    this.canvas.syncState(state.picture);
     for (let ctrl of this.controls) {
-      ctrl.synState(state);
+      ctrl.syncState(state);
     }
   }
 };
@@ -196,6 +233,7 @@ var PixelEditor = class PixelEditor {
 //It creates a <select> element with an option for each tool and
 //sets up a "change" event handler that updates the application state
 //when the user selects a different tool
+
 var ToolSelect = class ToolSelect {
   constructor(state, { tools, dispatch }) {
     this.select = elt(
@@ -203,13 +241,13 @@ var ToolSelect = class ToolSelect {
       {
         onchange: () => dispatch({ tool: this.select.value }),
       },
-      Object.keys(tools).map((name) =>
+      ...Object.keys(tools).map((name) =>
         elt("option", { selected: name == state.tool }, name)
       )
     );
     this.dom = elt("label", null, "🖌 Tool: ", this.select);
   }
-  synState(state) {
+  syncState(state) {
     this.select.value = state.tool;
   }
 };
@@ -230,7 +268,7 @@ var ColorSelect = class ColorSelect {
     });
     this.dom = elt("label", null, "🎨 Color: ", this.input);
   }
-  synState(state) {
+  syncState(state) {
     this.input.value = state.color;
   }
 };
@@ -238,17 +276,28 @@ var ColorSelect = class ColorSelect {
 //Create a function  that immediately calls the drawPixel function but
 //then returns it so that it is called again for newly touched pixels
 //when the user drags or swipes over the picture.
-function draw(pos, state, dispatch) {
-  function drawPixel({ x, y }, state) {
-    let drawn = { x, y, color: state.color };
-    dispatch({ picture: state.picture.draw([drawn]) });
-  }
 
-  drawPixel(pos, state);
-  return drawPixel;
+// function draw(pos, state, dispatch) {
+//   function drawPixel({ x, y }, state) {
+//     let drawn = { x, y, color: state.color };
+//     dispatch({ picture: state.picture.draw([drawn]) });
+//   }
+
+//   drawPixel(pos, state);
+//   return drawPixel;
+// }
+
+function draw(pos, state, dispatch) {
+  function connect(newPos, state) {
+    let line = drawLine(pos, newPos, state.color);
+    pos = newPos;
+    dispatch({ picture: state.picture.draw(line) });
+  }
+  connect(pos, state);
+  return connect;
 }
 
-function rectangles(start, state, dispatch) {
+function rectangle(start, state, dispatch) {
   function drawrectangle(pos) {
     let xStart = Math.min(start.x, pos.x);
     let yStart = Math.min(start.y, pos.y);
@@ -282,9 +331,9 @@ function fill({ x, y }, state, dispatch) {
       let x = drawn[done].x + dx;
       let y = drawn[done].y + dy;
       if (
-        x > 0 &&
+        x >= 0 &&
         x < state.picture.width &&
-        y > 0 &&
+        y >= 0 &&
         y < state.picture.height &&
         state.picture.pixel(x, y) == targetColor &&
         !drawn.some((p) => p.x == x && p.y == y)
@@ -304,22 +353,6 @@ function fill({ x, y }, state, dispatch) {
 function pick(pos, state, dispatch) {
   dispatch({ color: state.picture.pixel(pos.x, pos.y) });
 }
-
-let state = {
-  tool: "draw",
-  color: "000000",
-  picture: Picture.empty(60, 30, "#f0f0f0"),
-};
-
-let app = new PixelEditor(state, {
-  tools: [draw, fill, rectangles, pick],
-  controls: [ToolSelect, ColorSelect],
-  dispatch(action) {
-    state = updateSate(state, action);
-    app.syncState(state);
-  },
-});
-document.querySelector("div").appendChild(app.dom);
 
 //create a button for downlaoding
 
@@ -347,16 +380,17 @@ var SaveButton = class SaveButton {
   //to get browser to download pic.We add that link to the document,
   //simulate a click on it, and remove it again.
   save() {
-    let canvas = elt("canvas", DrawPicture(this.picture, canvas, 1));
+    let canvas = elt("canvas");
+    drawPicture(this.picture, canvas, 1);
     let link = elt("a", {
-      href: this.canvas.toDataURL(),
+      href: canvas.toDataURL(),
       download: "pixelart.png",
     });
     document.body.appendChild(link);
     link.click();
-    this.remove();
+    link.remove();
   }
-  synState(state) {
+  syncState(state) {
     this.picture = state.picture;
   }
 };
@@ -369,19 +403,21 @@ var LoadButton = class LoadButton {
     this.dom = elt(
       "button",
       {
-        onclick: () => this.startLoad(dispatch),
+        onclick: () => startLoad(dispatch),
       },
       "📁 Load"
     );
   }
+  syncState() {}
 };
+
 function startLoad(dispatch) {
   let input = elt("input", {
     type: "file",
     onchange: () => finishLoad(input.files[0], dispatch),
   });
   document.body.appendChild(input);
-  input.onclick();
+  input.click();
   input.remove();
 }
 
@@ -427,19 +463,22 @@ function pictureFromImage(image) {
   return new Picture(width, height, pixels);
 }
 
+//When the action is an undo action, the function takes the most recent
+//picture from the history and makes that the current picture
+
+//It sets doneAt to zero so that the next change is guaranteed to store
+//the picture back in the history, allowing you to revert to it another
+//time if you want
 function historyUpdateState(state, action) {
   if (action.undo == true) {
     if (state.done.length == 0) return state;
-    return Object.assign(
-      {},
-      {
-        picture: state.done[0],
-        done: state.slice(1),
-        doneAt: 0,
-      }
-    );
+    return Object.assign({}, state, {
+      picture: state.done[0],
+      done: state.done.slice(1),
+      doneAt: 0,
+    });
   } else if (action.picture && state.doneAt < Date.now() - 1000) {
-    return Object.assign({}, state.action, {
+    return Object.assign({}, state, action, {
       done: [state.picture, ...state.done],
       doneAt: Date.now(),
     });
@@ -447,3 +486,143 @@ function historyUpdateState(state, action) {
     return Object.assign({}, state, action);
   }
 }
+
+// if the action contains a new picture and the last time we stored
+//something is more than a second(1000 milliseconds) ago, the done and
+//doneAt properties are updated to store the previous picture
+
+//The undo button component  dispatches undo actions when clicked and
+//disables itself when there is nothing to undo
+var UndoButton = class UndoButton {
+  constructor(state, { dispatch }) {
+    this.dom = elt(
+      "button",
+      {
+        onclick: () => dispatch({ undo: true }),
+        disabled: state.done.length == 0,
+      },
+      "⮪ Undo"
+    );
+  }
+  syncState(state) {
+    this.dom.disabled = state.done.length == 0;
+  }
+};
+
+const startState = {
+  tool: "draw",
+  color: "#000000",
+  picture: Picture.empty(60, 30, "#f0f0f0"),
+  done: [],
+  doneAt: 0,
+};
+const baseTools = { draw, line, fill, rectangle, pick, circle };
+const baseControls = [
+  ToolSelect,
+  ColorSelect,
+  SaveButton,
+  LoadButton,
+  UndoButton,
+];
+
+function startPixelEditor({
+  state = startState,
+  tools = baseTools,
+  controls = baseControls,
+}) {
+  let app = new PixelEditor(state, {
+    tools,
+    controls,
+    dispatch(action) {
+      state = historyUpdateState(state, action);
+      app.syncState(state);
+    },
+  });
+  console.log("app ", app);
+  console.log("app dom ", app.dom);
+  return app.dom;
+}
+//exo circle
+function circle(pos, state, dispatch) {
+  function drawCircle(to) {
+    let radius = Math.sqrt(
+      Math.pow(to.x - pos.x, 2) + Math.pow(to.y - pos.y, 2)
+    );
+
+    let radiusC = Math.ceil(radius);
+    let drawn = [];
+    for (let dy = -radiusC; dy <= radiusC; dy++) {
+      for (let dx = -radiusC; dx <= radiusC; dx++) {
+        let dis = Math.sqrt(Math.pow(dx, 2) + Math.pow(dy, 2));
+        if (dis > radius) continue;
+        let x = dx + pos.x;
+        let y = dy + pos.y;
+        if (
+          y < 0 ||
+          y > state.picture.height ||
+          x < 0 ||
+          x > state.picture.width
+        )
+          continue;
+
+        drawn.push({ x, y, color: state.color });
+      }
+    }
+    dispatch({ picture: state.picture.draw(drawn) });
+  }
+  drawCircle(pos);
+  return drawCircle;
+}
+
+let dom = startPixelEditor({
+  tools: Object.assign({}, baseTools, { circle }),
+});
+
+//exo proper line
+function drawLine(from, to, color) {
+  let points = [];
+  //check if the abs value of the difference in x axis is > than that
+  //in y axis
+  if (Math.abs(from.x - to.x) > Math.abs(from.y - to.y)) {
+    //swap "from" and "to" if the from coord is > to coord
+    if (from.x > to.x) [from, to] = [to, from];
+
+    //get the slope of from to points
+    // s = abs(rise)/ abs(run) where rise is prev.y - curr.y and
+    // run is prev.x- curr.x
+    let slope = (to.y - from.y) / (to.x - from.x);
+
+    //push to point by looping thru x axis and y axis
+    for (let { x, y } = from; x <= to.x; x++) {
+      points.push({ x, y: Math.round(y), color });
+
+      //add y to slope
+      y += slope;
+    }
+  } else {
+    //swas again if prev.y > curr.y
+    if (from.y > to.y) {
+      [from, to] = [to, from];
+    }
+    let slope = (to.x - from.x) / (to.y - from.y);
+    for (let { x, y } = from; y <= to.y; y++) {
+      points.push({ x: Math.round(x), y, color });
+      x += slope;
+    }
+  }
+  return points;
+}
+
+function line(pos, state, dispatch) {
+  return (end) => {
+    let line = drawLine(pos, end, state.color);
+    dispatch({ picture: state.picture.draw(line) });
+  };
+}
+
+let d = startPixelEditor({
+  tools: Object.assign({}, baseTools, { line }),
+});
+
+// startPixelEditor({ tools: { draw, fill, pick, line, circle } });
+document.querySelector("div").appendChild(startPixelEditor({}));
